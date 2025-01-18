@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <stdatomic.h>
 #include <sys/time.h>
+#include <linux/futex.h>
+#include <sys/syscall.h>
 
 #define err_exit(msg) do {perror(msg); exit(1);} while(0)
 #define err_msg(msg) fprintf(stderr, msg ": %s\n", strerror(errno))
@@ -71,28 +73,57 @@ int is_wq_full(struct work_queue *wq)
 
 void enqueue_work(struct work_queue *wq, int sock)
 {
-	int new_tail;
+	int new_tail, old_tail, head, err;
 
-	/*
-	 * TODO: This burns the CPU but ensures low latency.
-	 * Can we do better with futex?
-	 */
+	/* This rarely happens so we don't convert to futex */
 	while (is_wq_full(wq));
 
 	wq->sock[wq->tail] = sock;
+	old_tail = wq->tail;
 	new_tail = (wq->tail + 1) % sock_queue_size;
 	store_release(&wq->tail, new_tail);
+
+	/*
+	 * Before enqueing this work, the work queue is empty, so we
+	 * need to wake the worker.
+	 */
+	if (load_acquire(&wq->head) == old_tail) {
+		err = syscall(SYS_futex, &wq->tail, FUTEX_WAKE, 1);
+		/* This should never happen */
+		if (err < 0)
+			err_msg("failed to futex wake");
+	}
 }
 
 int pop_work(struct work_queue *wq)
 {
-	int new_head, sock;
+	int new_head, tail, sock, err, i = 0;
 
-	/*
-	 * TODO: This burns the CPU but ensures low latency.
-	 * Can we do better with futex?
-	 */
-	while (is_wq_empty(wq));
+	do {
+		/*
+		 * Synchronizes with the store_release in enqueue_work.
+		 * The read to wq->head does need to have any
+		 * synchronization as the write to wq->head happens in
+		 * the same thread.
+		 */
+		tail = load_acquire(&wq->tail);
+		i++;
+
+		/*
+		 * TODO: We spin i loops to avoid futex wait syscall. That
+		 * i number is random and we still don't know whether it
+		 * is effective.
+		 */
+	} while (wq->head == tail && i < 1000);
+
+	/* The work queue is still empty */
+	if (wq->head == tail) {
+		err = syscall(SYS_futex, &wq->tail, FUTEX_WAIT, wq->head,
+			      NULL);
+		/* This should never happen */
+		if (err < 0 && errno != EAGAIN)
+			err_msg("failed to futex wait");
+	}
 
 	sock = wq->sock[wq->head];
 	new_head = (wq->head + 1) % sock_queue_size;
