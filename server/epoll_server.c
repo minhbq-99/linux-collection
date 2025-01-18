@@ -168,25 +168,15 @@ struct work_queue *setup_work_queue_list(int num_of_cpus)
 	return work_queue_list;
 }
 
-int sock_read(int sock)
+int sock_read(int sock, char *buffer)
 {
 	int ret;
-	char *buffer;
-
-	buffer = malloc(MAX_BUFFER);
-	if (!buffer) {
-		fprintf(stderr, "malloc buffer\n");
-		return -1;
-	}
 
 	ret = recv(sock, buffer, MAX_BUFFER, 0);
-	if (ret < 0) {
-		err_msg("recv");
-		ret = -1;
-		goto free_buf;
-	} else if (ret == 0) {
-		ret = -1;
-		goto free_buf;
+	if (ret <= 0) {
+		if (ret < 0)
+			err_msg("recv");
+		return -1;
 	}
 
 	/* TODO: We should ensure that we read all the data */
@@ -194,14 +184,10 @@ int sock_read(int sock)
 	ret = send(sock, buffer, ret, 0);
 	if (ret < 0) {
 		err_msg("send");
-		ret = -1;
-		goto free_buf;
+		return -1;
 	}
 
-	ret = 0;
-free_buf:
-	free(buffer);
-	return ret;
+	return 0;
 }
 
 int clean_up_sock(int epoll_fd, int sock)
@@ -223,10 +209,17 @@ void *thread_handler(void *arg)
 	int epoll_fd = data->epoll_fd;
 	struct work_queue *wq = data->wq;
 	int sock, ret;
+	char *buffer;
+
+	buffer = malloc(MAX_BUFFER);
+	if (!buffer) {
+		fprintf(stderr, "malloc buffer\n");
+		return NULL;
+	}
 
 	while(1) {
 		sock = pop_work(wq);
-		if (sock_read(sock) < 0)
+		if (sock_read(sock, buffer) < 0)
 			clean_up_sock(epoll_fd, sock);
 	}
 
