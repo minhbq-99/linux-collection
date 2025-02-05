@@ -23,3 +23,9 @@ Sent: 151863.93 req/s. Received: 151862.86 req/s
 DataSent: 4.63 GB/s. Received: 4.63 GB/s
 ```
 
+- single thread io_uring:
+```
+./client --client 32 --packet.size 32000 --duration 30s
+Sent: 71659.40 req/s. Received: 71658.33 req/s
+DataSent: 2.14 GB/s. Received: 2.14 GB/s
+```
