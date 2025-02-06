@@ -1,4 +1,5 @@
 /* Echo server with vanilla io_uring without using liburing */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -78,6 +79,7 @@ struct sock_ctrl {
 struct io_uring_ctrl {
 	int io_uring_offset;
 	struct io_uring_params *params;
+	int use_async;
 };
 
 int setup_listen_sock()
@@ -120,7 +122,7 @@ int setup_listen_sock()
 	return listen_sock;
 }
 
-struct io_uring_ctrl *setup_io_uring()
+struct io_uring_ctrl *setup_io_uring(int use_async)
 {
 	int io_uring_fd, ret;
 	struct io_uring_params *params;
@@ -190,8 +192,30 @@ struct io_uring_ctrl *setup_io_uring()
 	params->cq_off.user_addr = (unsigned long long)cq_ring;
 	params->sq_off.user_addr = (unsigned long long)sqe_ring;
 
+	ctrl->use_async = use_async;
+	/* Set the maximum number of unbound workers */
+	if (use_async) {
+		int num_wokers = sysconf(_SC_NPROCESSORS_ONLN) / 2;
+		/*
+		 * The recv/send use unbound worker so here we only set limit
+		 * for unbound worker and leave the limit pf bound worker as
+		 * default.
+		 */
+		int max_workers[2] = {0, num_wokers};
+
+		ret = syscall(SYS_io_uring_register, io_uring_fd,
+			      IORING_REGISTER_IOWQ_MAX_WORKERS, &max_workers,
+			      2);
+		if (ret < 0) {
+			err_msg("failed to limit io-wq");
+			goto unmap_sqe_ring;
+		}
+	}
+
 	return ctrl;
 
+unmap_sqe_ring:
+	munmap(sqe_ring, sqe_ring_size);
 unmap_cq_ring:
 	munmap(cq_ring, cq_ring_size);
 close_io_uring:
@@ -310,6 +334,8 @@ int handle_completion_event(struct io_uring_ctrl *ctrl, unsigned int head,
 			sqe.fd = sctrl->fd;
 			sqe.addr = (unsigned long long)sctrl->buffer;
 			sqe.len = cqe->res;
+			if (ctrl->use_async)
+				sqe.flags = IOSQE_ASYNC;
 
 			ptr.buffer = (unsigned long long)sctrl;
 			set_action(&ptr, ACT_SEND);
@@ -332,6 +358,8 @@ int handle_completion_event(struct io_uring_ctrl *ctrl, unsigned int head,
 			sqe.fd = sctrl->fd;
 			sqe.addr = (unsigned long long)buffer;
 			sqe.len = MAX_BUFFER;
+			if (ctrl->use_async)
+				sqe.flags = IOSQE_ASYNC;
 
 			ptr.buffer = (unsigned long long)sctrl;
 			set_action(&ptr, ACT_RECV);
@@ -390,12 +418,28 @@ int monitor_completion_queue(struct io_uring_ctrl *ctrl)
 	return 0;
 }
 
-int main()
+int main(int argc, char **argv)
 {
-	int ret, listen_sock;
+	int ret, listen_sock, opt;
 	struct io_uring_ctrl *ctrl;
 	struct io_uring_sqe sqe = {};
 	struct packed_pointer ptr;
+	int use_async = 0;
+
+	while ((opt = getopt(argc, argv, "ha")) != -1) {
+		switch (opt) {
+		case 'a':
+			use_async = 1;
+			break;
+		case 'h':
+		default:
+			fprintf(stderr,
+				"Usage: %s [-a]\n\n"
+				"where: \n\t -a: use async recv/send\n",
+				argv[0]);
+			return 1;
+		}
+	}
 
 	listen_sock = setup_listen_sock();
 	if (listen_sock < 0) {
@@ -403,7 +447,7 @@ int main()
 		return 1;
 	}
 	
-	ctrl = setup_io_uring();
+	ctrl = setup_io_uring(use_async);
 	if (!ctrl) {
 		fprintf(stderr, "failed to setup io_uring\n");
 		return 1;
