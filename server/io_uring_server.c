@@ -195,7 +195,7 @@ struct io_uring_ctrl *setup_io_uring(int use_async)
 	ctrl->use_async = use_async;
 	/* Set the maximum number of unbound workers */
 	if (use_async) {
-		int num_wokers = sysconf(_SC_NPROCESSORS_ONLN) / 2;
+		int num_wokers = sysconf(_SC_NPROCESSORS_ONLN);
 		/*
 		 * The recv/send use unbound worker so here we only set limit
 		 * for unbound worker and leave the limit pf bound worker as
@@ -203,6 +203,7 @@ struct io_uring_ctrl *setup_io_uring(int use_async)
 		 */
 		int max_workers[2] = {0, num_wokers};
 
+		printf("Max workers: %d\n", num_wokers);
 		ret = syscall(SYS_io_uring_register, io_uring_fd,
 			      IORING_REGISTER_IOWQ_MAX_WORKERS, &max_workers,
 			      2);
