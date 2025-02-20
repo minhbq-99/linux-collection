@@ -122,7 +122,7 @@ int setup_listen_sock()
 	return listen_sock;
 }
 
-struct io_uring_ctrl *setup_io_uring(int use_async)
+struct io_uring_ctrl *setup_io_uring(int use_async, int use_defer_taskrun)
 {
 	int io_uring_fd, ret;
 	struct io_uring_params *params;
@@ -145,6 +145,9 @@ struct io_uring_ctrl *setup_io_uring(int use_async)
 	ctrl->params = params;
 
 	params->flags = IORING_SETUP_NO_SQARRAY;
+	if (use_defer_taskrun)
+		params->flags |= IORING_SETUP_DEFER_TASKRUN |
+					IORING_SETUP_SINGLE_ISSUER;
 
 	io_uring_fd = syscall(SYS_io_uring_setup, MAX_SQE, params);
 	if (io_uring_fd < 0) {
@@ -425,18 +428,22 @@ int main(int argc, char **argv)
 	struct io_uring_ctrl *ctrl;
 	struct io_uring_sqe sqe = {};
 	struct packed_pointer ptr;
-	int use_async = 0;
+	int use_async = 0, use_defer_taskrun = 0;
 
-	while ((opt = getopt(argc, argv, "ha")) != -1) {
+	while ((opt = getopt(argc, argv, "had")) != -1) {
 		switch (opt) {
 		case 'a':
 			use_async = 1;
 			break;
+		case 'd':
+			use_defer_taskrun = 1;
+			break;
 		case 'h':
 		default:
 			fprintf(stderr,
-				"Usage: %s [-a]\n\n"
-				"where: \n\t -a: use async recv/send\n",
+				"Usage: %s [-a] [-d]\n\nwhere:\n"
+				"\t -a: use async recv/send\n"
+				"\t -d: use defer taskrun\n",
 				argv[0]);
 			return 1;
 		}
@@ -448,7 +455,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
-	ctrl = setup_io_uring(use_async);
+	ctrl = setup_io_uring(use_async, use_defer_taskrun);
 	if (!ctrl) {
 		fprintf(stderr, "failed to setup io_uring\n");
 		return 1;
