@@ -4,6 +4,9 @@
 #include <linux/if_ether.h>
 #include <linux/in.h>
 
+#define IP_MF		0x2000 /* Flag: "More Fragments" */
+#define IP_OFFSET	0x1FFF /* "Fragment Offset" part */
+
 struct {
 	__uint(type, BPF_MAP_TYPE_XSKMAP);
 	__uint(max_entries, 1);
@@ -27,6 +30,7 @@ int redirect_xsk(struct xdp_md *xdp)
 	unsigned int offset = 12;
 	__u16 ether_type;
 	__u8 protocol;
+	__u16 frag_off;
 	int err;
 
 	err = bpf_xdp_load_bytes(xdp, offset, &ether_type, sizeof(ether_type));
@@ -40,6 +44,23 @@ int redirect_xsk(struct xdp_md *xdp)
 	offset = 23;
 	err = bpf_xdp_load_bytes(xdp, offset, &protocol, sizeof(protocol));
 	if (err)
+		return XDP_PASS;
+
+	/*
+	 * Don't redirect fragmentend IP packet
+	 *
+	 * Ethernet header: 14 bytes, flags + frag_off offset: 6 bytes
+	 */
+	offset = 20;
+	err = bpf_xdp_load_bytes(xdp, offset, &frag_off, sizeof(frag_off));
+	if (err)
+		return XDP_PASS;
+
+	/*
+	 * If the MF bit is set or the fragment offset is not 0,
+	 * it is a fragmented packet.
+	 */
+	if ((frag_off & bpf_htons(IP_MF | IP_OFFSET)) != 0)
 		return XDP_PASS;
 
 	if (protocol != IPPROTO_UDP)
