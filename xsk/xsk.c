@@ -39,7 +39,7 @@ int main()
 		.sxdp_family = AF_XDP,
 		.sxdp_ifindex = if_nametoindex(INTERFACE),
 		.sxdp_queue_id = 0,
-		.sxdp_flags = XDP_ZEROCOPY,
+		.sxdp_flags = XDP_ZEROCOPY | XDP_USE_SG,
 	};
 	void *rx_ring, *fill_ring;
 	struct xdp_mmap_offsets off;

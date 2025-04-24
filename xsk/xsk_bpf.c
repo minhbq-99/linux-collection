@@ -22,7 +22,7 @@ struct {
  *
  * Redirect UDP packets to XDP socket.
  */
-SEC("xdp")
+SEC("xdp.frags")
 int redirect_xsk(struct xdp_md *xdp)
 {
 	__u32 key = 0;
