@@ -188,13 +188,20 @@ int main()
 			uint16_t len;
 
 			offset = desc[consumer % MAX_ENTRIES].addr;
-			printf("Rx ring: Umem offset: 0x%lx\n", offset);
+			printf("Rx ring: Umem offset: 0x%lx, len: %d\n",
+			       offset, desc[consumer % MAX_ENTRIES].len);
 
 			data = umem_region + offset;
 
 			/*
+			 * TODO: The following printf for debugging only, it
+			 * only prints correct information when each frame is in
+			 * a single XDP frame.
+			 */
+
+			/*
 			 * Ethernet header: 14 bytes
-			 * IP header: 16 bytes (no IP options)
+			 * IP header: 20 bytes (no IP options)
 			 * UDP header's length offset: 4 bytes
 			 */
 			data = data + (14 + 20 + 4);
