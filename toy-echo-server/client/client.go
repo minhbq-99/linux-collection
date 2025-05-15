@@ -21,6 +21,7 @@ type packetInOut struct {
 func clientRoutine(
 	serverAddress string,
 	packetSize uint64,
+	protocol string,
 	wg *sync.WaitGroup,
 	inOut *packetInOut,
 	stop chan struct{},
@@ -33,7 +34,7 @@ func clientRoutine(
 	}
 	readBuffer := make([]byte, packetSize)
 
-	client, err := net.Dial("tcp", serverAddress)
+	client, err := net.Dial(protocol, serverAddress)
 	if err != nil {
 		fmt.Printf("Failed to connect to server: %v\n", err)
 		return
@@ -114,13 +115,20 @@ func clientAction(ctx *cli.Context) error {
 	serverAddress := fmt.Sprintf("%s:%d", ctx.String("ip"), ctx.Int("port"))
 	stop := make(chan struct{})
 
+	var protocol string
+	if ctx.Bool("udp") {
+		protocol = "udp"
+	} else {
+		protocol = "tcp"
+	}
+
 	var wg sync.WaitGroup
 
 	inOut := make([]packetInOut, numClient)
 	start := time.Now()
 	for i := 0; i < numClient; i++ {
 		wg.Add(1)
-		go clientRoutine(serverAddress, packetSize, &wg, &inOut[i], stop)
+		go clientRoutine(serverAddress, packetSize, protocol, &wg, &inOut[i], stop)
 	}
 
 	time.Sleep(ctx.Duration("duration"))
@@ -166,6 +174,10 @@ func main() {
 				Name:  "port",
 				Usage: "The server's port",
 				Value: 8888,
+			},
+			&cli.BoolFlag{
+				Name:  "udp",
+				Usage: "Connect using UDP protocol",
 			},
 		},
 		Action: clientAction,
