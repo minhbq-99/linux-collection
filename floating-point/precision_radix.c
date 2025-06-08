@@ -11,36 +11,43 @@
 #include <stdio.h>
 #include <string.h>
 
-#define	DEFINE_DETECTION(type) \
-	int detect_precision_##type(void) 	\
+#define	DEFINE_DETECTION(type)			\
+	int detect_radix_##type(void) 		\
+	{					\
+		type a = 1.0;			\
+		type b = a + 1.0;		\
+		type c;				\
+		int radix = 1;			\
+						\
+		while (b - a == 1.0) {		\
+			a = a * 2;		\
+			b = a + 1.0;		\
+		}				\
+						\
+		a = radix * 1.0;		\
+		c = a + b;			\
+		while (c - b != a) {		\
+			radix++;		\
+			a = radix * 1.0;	\
+			c = a + b;		\
+		}				\
+						\
+		return radix;			\
+	}					\
+						\
+	int detect_precision_##type(int radix)	\
 	{					\
 		int precision = 0;		\
 		type a = 1.0;			\
 		type b = a + 1.0;		\
 						\
 		while (b - a == 1.0) {		\
-			a = a * 2;		\
-			precision++;		\
+			a = a * radix;		\
 			b = a + 1.0;		\
+			precision++;		\
 		}				\
 						\
 		return precision;		\
-	}					\
-						\
-	int detect_radix_##type(int precision)		\
-	{						\
-		type a = (type)(1ULL << precision);	\
-		int radix = 1;				\
-		type b = radix * 1.0;			\
-		type c = a + b;				\
-							\
-		while (c - a != b) {			\
-			radix++;			\
-			b = radix * 1.0;		\
-			c = a + b;			\
-		}					\
-							\
-		return radix;				\
 	}
 
 DEFINE_DETECTION(float);
@@ -53,9 +60,9 @@ void print_usage(const char *prog)
 
 int main(int argc, char **argv)
 {
-	int (*detect_precision_fn)(void);
-	int (*detect_radix_fn)(int);
-	int precision;
+	int (*detect_radix_fn)(void);
+	int (*detect_precision_fn)(int);
+	int radix;
 
 	if (argc < 2) {
 		print_usage(argv[0]);
@@ -63,18 +70,19 @@ int main(int argc, char **argv)
 	}
 
 	if (!strcmp(argv[1], "float")) {
-		detect_precision_fn = detect_precision_float;
 		detect_radix_fn = detect_radix_float;
+		detect_precision_fn = detect_precision_float;
 	} else if (!strcmp(argv[1], "double")) {
-		detect_precision_fn = detect_precision_double;
 		detect_radix_fn = detect_radix_double;
+		detect_precision_fn = detect_precision_double;
 	} else {
 		print_usage(argv[0]);
 		return 1;
 	}
 
-	precision = detect_precision_fn();
-	printf("Precision: %u, radix: %u\n", precision, detect_radix_fn(precision));
+	radix = detect_radix_fn();
+	printf("Precision: %u, radix: %u\n", detect_precision_fn(radix),
+	       radix);
 	return 0;
 }
 
