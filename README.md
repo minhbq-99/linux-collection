@@ -7,3 +7,6 @@ epoll and the other using io-uring
 redirect UDP packets from virtio-net network interface to userspace program
 - [mptcp](./mptcp/): very simple client and server to observe Multipath TCP
 connection establishment.
+- [floating-point](./floating-point/): try to learn more about floating point
+numbers
+
